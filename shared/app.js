@@ -1069,7 +1069,7 @@ function drawNeckPanel(canvas, neckIdx, neck) {
     // band visually aligns with where ±5¢ lands on the trail.
     const isActiveGroupBand = lockEff && g.midi === lockedMidi;
     const bandHalf = trailOffset(IN_TUNE_CENTS, rowHalfPerString[g.members[0]], isActiveGroupBand);
-    ctx.fillStyle = `rgba(74, 222, 128, ${0.06 * dim})`;
+    ctx.fillStyle = `rgba(${TRAIL_RGB}, ${0.06 * dim})`;
     if (horizontal) {
       ctx.fillRect(0, crossPx - bandHalf, W, bandHalf * 2);
     } else {
@@ -1087,14 +1087,14 @@ function drawNeckPanel(canvas, neckIdx, neck) {
     }
     if (isActive) {
       const fullHalf = rowHalfPerString[g.members[0]];
-      ctx.fillStyle = 'rgba(134, 239, 172, 0.14)';
+      ctx.fillStyle = `rgba(${TRAIL_RGB_INTUNE}, 0.14)`;
       if (horizontal) {
         ctx.fillRect(0, crossPx - fullHalf, W, fullHalf * 2);
       } else {
         ctx.fillRect(crossPx - fullHalf, 0, fullHalf * 2, H);
       }
       // Side accent stripe on the start of the time axis.
-      ctx.fillStyle = 'rgba(134, 239, 172, 0.90)';
+      ctx.fillStyle = `rgba(${TRAIL_RGB_INTUNE}, 0.90)`;
       if (horizontal) {
         ctx.fillRect(0, crossPx - fullHalf, 4 * dpr, fullHalf * 2);
       } else {
@@ -1335,21 +1335,24 @@ function drawOneGuitar(ctx, x, y, w, h, neck, neckIdx, dpr) {
   let bridgeX;
 
   ctx.save();
-  ctx.fillStyle = 'rgba(170, 110, 60, 0.20)';
-  ctx.strokeStyle = 'rgba(220, 180, 130, 0.45)';
+  // Body fill / outline pull from the brand theme so each tuner's
+  // instrument silhouette wears its own color (Guitar green, Violin
+  // magenta, Bass orange, etc.).
+  ctx.fillStyle = `rgba(${TRAIL_RGB}, 0.14)`;
+  ctx.strokeStyle = `rgba(${TRAIL_RGB_INTUNE}, 0.50)`;
   ctx.lineWidth = 1.1 * dpr;
 
   if (bodyShape === 'round') {
     // Banjo — drum-head circle. Override fill for a paler taut skin.
     const radius = Math.min(h * 0.46, bodyW * 0.46);
     const drumCx = x + w - radius - 4 * dpr;
-    ctx.fillStyle = 'rgba(240, 230, 215, 0.32)'; // taut skin
+    ctx.fillStyle = `rgba(${TRAIL_RGB}, 0.10)`; // themed taut skin
     ctx.beginPath();
     ctx.arc(drumCx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    // Inner rim ring (the drum head's tension hoop).
-    ctx.strokeStyle = 'rgba(220, 180, 130, 0.55)';
+    // Inner rim ring (the drum head's tension hoop) — also themed.
+    ctx.strokeStyle = `rgba(${TRAIL_RGB_INTUNE}, 0.55)`;
     ctx.beginPath();
     ctx.arc(drumCx, cy, radius * 0.86, 0, Math.PI * 2);
     ctx.stroke();
@@ -1382,76 +1385,94 @@ function drawOneGuitar(ctx, x, y, w, h, neck, neckIdx, dpr) {
     bridgeX = tailX - bodyW * 0.20;
   } else if (bodyShape === 'hourglass') {
     // Violin / fiddle / viola / cello / bass — figure-8 with a
-    // pinched waist (C-bouts), F-holes flanking the bridge, scroll
-    // pegbox at the headstock side. No sound hole on the lower bout.
-    const upperRy = h * 0.30;
-    const upperRx = bodyW * 0.30;
-    const lowerRy = h * 0.38;
+    // pinched waist (C-bouts) and 2 F-hole slits flanking the bridge.
+    // Drawn as ONE closed path traced clockwise from the leftmost
+    // point of the upper bout. Each bout's half is one cubic bezier
+    // (left equator → top peak → right equator); the C-bout waist is
+    // two cubics (right equator of upper bout → top of waist; top of
+    // waist → left equator of lower bout) that pinch inward toward
+    // cy. The previous version's control points sent the curve
+    // BELOW its endpoints, producing the "spaghetti" body the user
+    // saw on violin/cello.
+    const upperRx = bodyW * 0.28;
+    const upperRy = h * 0.32;
     const lowerRx = bodyW * 0.34;
-    const upperCx = bodyStartX + upperRx * 0.95;
-    const lowerCx = x + w - lowerRx * 0.95;
-    // Outline as a single closed bezier path so the C-bout waist
-    // pinches inward instead of two separate ellipses.
+    const lowerRy = h * 0.40;
+    const upperCx = bodyStartX + upperRx * 1.05;
+    const lowerCx = x + w - lowerRx * 1.05;
+    const upperLeftX = upperCx - upperRx;
     const upperRightX = upperCx + upperRx;
     const lowerLeftX = lowerCx - lowerRx;
+    const lowerRightX = lowerCx + lowerRx;
     const waistX = (upperRightX + lowerLeftX) / 2;
-    const waistRy = h * 0.20;
+    const waistRy = h * 0.13;       // narrower than either bout
+    const cBoutBend = bodyW * 0.03; // how far control points pull inward
+
     ctx.beginPath();
-    ctx.moveTo(upperCx - upperRx, cy);
-    // top arc of upper bout
+    ctx.moveTo(upperLeftX, cy);
+    // Upper bout — top half (cy → cy via top peak)
     ctx.bezierCurveTo(
-      upperCx - upperRx, cy - upperRy,
-      upperCx + upperRx, cy - upperRy,
+      upperLeftX, cy - upperRy,
+      upperRightX, cy - upperRy,
       upperRightX, cy,
     );
-    // upper-bout shoulder → waist (C-bout) on top
+    // C-bout TOP: upper-right equator → top of waist (concave)
     ctx.bezierCurveTo(
-      upperRightX + bodyW * 0.04, cy - waistRy * 0.9,
-      waistX - bodyW * 0.04, cy - waistRy * 1.1,
+      upperRightX + cBoutBend, cy - waistRy * 0.4,
+      waistX - cBoutBend, cy - waistRy,
       waistX, cy - waistRy,
     );
+    // C-bout TOP cont.: top of waist → lower-left equator
     ctx.bezierCurveTo(
-      waistX + bodyW * 0.04, cy - waistRy * 1.1,
-      lowerLeftX - bodyW * 0.04, cy - lowerRy * 0.9,
+      waistX + cBoutBend, cy - waistRy,
+      lowerLeftX - cBoutBend, cy - waistRy * 0.4,
       lowerLeftX, cy,
     );
-    // top → bottom of lower bout
+    // Lower bout — top half
     ctx.bezierCurveTo(
-      lowerLeftX, cy + lowerRy,
-      lowerCx + lowerRx, cy + lowerRy,
-      lowerCx + lowerRx, cy,
+      lowerLeftX, cy - lowerRy,
+      lowerRightX, cy - lowerRy,
+      lowerRightX, cy,
     );
-    // bottom of lower bout → bottom waist
+    // Lower bout — bottom half
     ctx.bezierCurveTo(
-      lowerCx + lowerRx - bodyW * 0.04, cy + lowerRy * 0.5,
-      waistX + bodyW * 0.04, cy + waistRy * 1.1,
+      lowerRightX, cy + lowerRy,
+      lowerLeftX, cy + lowerRy,
+      lowerLeftX, cy,
+    );
+    // C-bout BOTTOM (mirror)
+    ctx.bezierCurveTo(
+      lowerLeftX - cBoutBend, cy + waistRy * 0.4,
+      waistX + cBoutBend, cy + waistRy,
       waistX, cy + waistRy,
     );
     ctx.bezierCurveTo(
-      waistX - bodyW * 0.04, cy + waistRy * 1.1,
-      upperRightX + bodyW * 0.04, cy + waistRy * 0.9,
+      waistX - cBoutBend, cy + waistRy,
+      upperRightX + cBoutBend, cy + waistRy * 0.4,
       upperRightX, cy,
     );
-    // bottom of upper bout
+    // Upper bout — bottom half (close)
     ctx.bezierCurveTo(
-      upperCx + upperRx, cy + upperRy,
-      upperCx - upperRx, cy + upperRy,
-      upperCx - upperRx, cy,
+      upperRightX, cy + upperRy,
+      upperLeftX, cy + upperRy,
+      upperLeftX, cy,
     );
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    // F-holes — two thin slit shapes flanking the bridge area.
+
+    // F-holes — two thin slit shapes flanking the bridge area on the
+    // lower bout, slightly above and below the equator.
     ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
-    const fHoleX = waistX + bodyW * 0.08;
-    const fHoleRy = lowerRy * 0.45;
+    const fHoleX = lowerCx - lowerRx * 0.10;
+    const fHoleRy = lowerRy * 0.32;
     [-1, 1].forEach((side) => {
-      const fy = cy + side * lowerRy * 0.30;
+      const fy = cy + side * lowerRy * 0.28;
       ctx.beginPath();
-      ctx.ellipse(fHoleX, fy, bodyW * 0.012, fHoleRy * 0.55, 0, 0, Math.PI * 2);
+      ctx.ellipse(fHoleX, fy, bodyW * 0.014, fHoleRy, 0, 0, Math.PI * 2);
       ctx.fill();
     });
-    bridgeX = fHoleX + bodyW * 0.06;
+    bridgeX = lowerCx + lowerRx * 0.18;
   } else {
     // Figure-8 (guitar / ukulele).
     const upperRy = h * 0.34;
@@ -1551,8 +1572,8 @@ function drawOneGuitar(ctx, x, y, w, h, neck, neckIdx, dpr) {
     ctx.save();
     if (isLive) {
       ctx.shadowBlur = 10 * dpr;
-      ctx.shadowColor = 'rgba(134, 239, 172, 0.85)';
-      ctx.strokeStyle = 'rgba(134, 239, 172, 0.95)';
+      ctx.shadowColor = `rgba(${TRAIL_RGB_INTUNE}, 0.85)`;
+      ctx.strokeStyle = `rgba(${TRAIL_RGB_INTUNE}, 0.95)`;
     } else {
       ctx.strokeStyle = 'rgba(220, 220, 230, 0.78)';
     }
@@ -1566,14 +1587,14 @@ function drawOneGuitar(ctx, x, y, w, h, neck, neckIdx, dpr) {
     // Tuning peg dot on the headstock.
     const pegFrac = N === 1 ? 0.5 : i / (N - 1);
     const pegY = (cy - fretBoardH * 0.85) + pegFrac * (fretBoardH * 1.7);
-    ctx.fillStyle = isLive ? 'rgba(134, 239, 172, 0.95)' : 'rgba(200, 200, 210, 0.85)';
+    ctx.fillStyle = isLive ? `rgba(${TRAIL_RGB_INTUNE}, 0.95)` : 'rgba(200, 200, 210, 0.85)';
     ctx.beginPath();
     ctx.arc(x + headW * 0.50, pegY, 2.2 * dpr, 0, Math.PI * 2);
     ctx.fill();
 
     // String label at the headstock side — "S1 E2".
     const info = window.midiToName(Math.round(m));
-    ctx.fillStyle = isLive ? 'rgba(134, 239, 172, 0.95)' : 'rgba(245, 245, 247, 0.72)';
+    ctx.fillStyle = isLive ? `rgba(${TRAIL_RGB_INTUNE}, 0.95)` : 'rgba(245, 245, 247, 0.72)';
     ctx.font = `${8.5 * dpr}px -apple-system, system-ui, sans-serif`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
@@ -1582,7 +1603,7 @@ function drawOneGuitar(ctx, x, y, w, h, neck, neckIdx, dpr) {
 
   // Neck name in the corner.
   if (state.necks.length > 1) {
-    ctx.fillStyle = 'rgba(134, 239, 172, 0.85)';
+    ctx.fillStyle = `rgba(${TRAIL_RGB_INTUNE}, 0.85)`;
     ctx.font = `600 ${9 * dpr}px -apple-system, system-ui, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -1785,9 +1806,9 @@ function drawCircleOfFifths() {
       ctx.arc(cx, cy, r0, a1, a0, true);
       ctx.closePath();
       ctx.fillStyle = isLive
-        ? 'rgba(134, 239, 172, 0.55)'
+        ? `rgba(${TRAIL_RGB_INTUNE}, 0.55)`
         : isUsed
-          ? 'rgba(74, 222, 128, 0.22)'
+          ? `rgba(${TRAIL_RGB}, 0.22)`
           : 'rgba(255,255,255,0.035)';
       ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.15)';
@@ -1829,7 +1850,7 @@ function drawCircleOfFifths() {
       ctx.beginPath();
       ctx.arc(cx + Math.cos(tagAngle) * tagR, cy + Math.sin(tagAngle) * tagR, ringWidth * 0.28, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = 'rgba(134,239,172,0.95)';
+      ctx.fillStyle = `rgba(${TRAIL_RGB_INTUNE}, 0.95)`;
       ctx.fillText(tag, cx + Math.cos(tagAngle) * tagR, cy + Math.sin(tagAngle) * tagR);
       ctx.restore();
     }
