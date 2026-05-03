@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="description" content="Free online viola tuner — standard CGDA, plus 5-string viola variants (low F or high E extension). YIN pitch detection + neon-trail visualizer." />
+<title>Viola Tuner — free online tuner with neon-trail visualizer</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg-2: #14141c;
+    --fg: #f5f5f7;
+    --muted: rgba(245, 245, 247, 0.55);
+    --line: rgba(255, 255, 255, 0.10);
+    --theme-hue: 261; /* overridden by applyThemeHue() per brand */
+    --green: hsl(var(--theme-hue), 71%, 58%);
+    --green-bright: hsl(var(--theme-hue), 76%, 73%);
+    --sharp: #fca5a5;
+    --flat: #7dd3fc;
+    --accent: var(--green);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line);
+    gap: 10px;
+  }
+  header h1 {
+    font-size: 0.92rem;
+    margin: 0;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  header .sub {
+    font-size: 0.62rem;
+    color: var(--muted);
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.015);
+    align-items: center;
+  }
+  .ctrl {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .ctrl label {
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .ctrl select {
+    appearance: none;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 0.76rem;
+    max-width: 200px;
+  }
+  .ctrl select:focus { outline: 1px solid var(--accent); }
+
+  .seg-group {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.03);
+  }
+  .seg {
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    padding: 4px 8px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    border-right: 1px solid var(--line);
+    white-space: nowrap;
+    line-height: 1.3;
+  }
+  .seg:last-child { border-right: none; }
+  .seg.active {
+    background: hsla(var(--theme-hue), 71%, 58%, 0.18);
+    color: var(--green-bright);
+  }
+  .seg:hover:not(.active) { color: var(--fg); }
+
+  .btn {
+    background: hsla(var(--theme-hue), 71%, 58%, 0.16);
+    color: var(--green-bright);
+    border: 1px solid hsla(var(--theme-hue), 71%, 58%, 0.35);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:hover { background: hsla(var(--theme-hue), 71%, 58%, 0.26); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  .btn.ghost:hover { color: var(--fg); border-color: rgba(255,255,255,0.25); }
+  .ctrl-spacer { flex: 1 1 auto; }
+
+  .neck-pickers {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 10px 8px;
+    border-bottom: 1px solid var(--line);
+    background: hsla(var(--theme-hue), 71%, 58%, 0.03);
+  }
+  .neck-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .neck-pick__tag {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--green-bright);
+    min-width: 52px;
+  }
+  .neck-pick__sel {
+    appearance: none;
+    background: rgba(255,255,255,0.04);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 0.76rem;
+  }
+  .neck-pick__sel:focus { outline: 1px solid var(--accent); }
+
+  .stage {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 14px;
+    padding: 14px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  @media (max-width: 900px) {
+    body { height: auto; overflow: auto; }
+    .stage {
+      grid-template-columns: 1fr;
+      overflow: visible;
+    }
+    .stage .side { order: 2; overflow: visible; }
+    .strings { overflow: visible; }
+  }
+
+  .strings {
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .neck-panel {
+    flex: 1 1 auto;
+    min-height: 200px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .neck-panel__label {
+    font-size: 0.66rem;
+    color: var(--muted);
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    padding: 0 0 4px 4px;
+  }
+  .neck-panel canvas {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(ellipse at 50% 0%, hsla(var(--theme-hue),71%,58%,0.04), transparent 60%),
+      radial-gradient(ellipse at 50% 100%, hsla(var(--theme-hue),71%,58%,0.02), transparent 60%),
+      var(--bg-2);
+    border-radius: 10px;
+  }
+
+  body[data-orientation="vertical"] .neck-panel canvas {
+    background:
+      radial-gradient(ellipse at 0% 50%, hsla(var(--theme-hue),71%,58%,0.04), transparent 60%),
+      radial-gradient(ellipse at 100% 50%, hsla(var(--theme-hue),71%,58%,0.02), transparent 60%),
+      var(--bg-2);
+  }
+
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 4px;
+  }
+  .panel {
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px;
+  }
+  .panel h3 {
+    font-size: 0.7rem;
+    margin: 0 0 8px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .readout {
+    text-align: center;
+  }
+  .readout__note {
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.02em;
+  }
+  .readout__note .oct {
+    font-size: 1.2rem;
+    opacity: 0.55;
+    margin-left: 0.18em;
+  }
+  .readout__cents {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 6px;
+    color: var(--muted);
+    min-height: 1.3em;
+  }
+  .readout__cents.intune { color: var(--green); }
+  .readout__cents.sharp  { color: var(--sharp); }
+  .readout__cents.flat   { color: var(--flat); }
+  .readout__target {
+    font-size: 0.74rem;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+  }
+  .readout__mic {
+    margin-top: 10px;
+    font-size: 0.74rem;
+    color: var(--muted);
+  }
+  .readout__mic.error { color: var(--sharp); }
+
+  .circle-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .circle-wrap canvas {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--bg-2);
+    border-radius: 12px;
+  }
+  .guitar-wrap canvas {
+    width: 100%;
+    aspect-ratio: 1.6 / 1;
+    background: var(--bg-2);
+    border-radius: 12px;
+  }
+  body[data-orientation="vertical"] .guitar-wrap canvas {
+    aspect-ratio: 1 / 1.4;
+  }
+  .circle-legend {
+    display: flex;
+    gap: 10px;
+    font-size: 0.66rem;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .circle-legend .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  .string-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .neck-edit__label {
+    font-size: 0.66rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+  .neck-edit__rows {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+    gap: 6px;
+  }
+  .neck-edit__courses {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .course {
+    display: grid;
+    grid-template-columns: 26px 1fr 1fr;
+    gap: 4px;
+    align-items: center;
+  }
+  .course__tag {
+    font-size: 0.62rem;
+    color: var(--green-bright);
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    text-align: right;
+    padding-right: 2px;
+  }
+  .string-edit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 4px 6px;
+  }
+  .string-edit__tag {
+    font-size: 0.64rem;
+    color: var(--muted);
+    min-width: 22px;
+  }
+  .string-edit input {
+    width: 100%;
+    background: transparent;
+    color: var(--fg);
+    border: none;
+    font-size: 0.85rem;
+    text-align: center;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .string-edit input:focus { outline: none; }
+  .string-edit input.bad { color: var(--sharp); }
+
+  footer {
+    padding: 8px 14px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.7rem;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  footer .copy {
+    width: 100%;
+    text-align: center;
+    font-size: 0.62rem;
+    opacity: 0.55;
+    border-top: 1px solid var(--line);
+    padding-top: 6px;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body data-orientation="horizontal">
+
+<header>
+  <div>
+    <h1>Viola Tuner</h1>
+    <div class="sub">YIN · neon-trail · circle of fifths · 4 / 5-string viola plus violin, cello, bass & more</div>
+  </div>
+  <div style="display:flex; gap:6px; align-items:center;">
+    <button id="start-mic" class="btn" title="Start microphone">Start mic</button>
+    <button id="reset-trail" class="btn ghost" title="Clear pitch trail">Clear</button>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="ctrl">
+    <label>Guitar</label>
+    <select id="category"></select>
+  </div>
+  <div class="ctrl">
+    <label>Tuning</label>
+    <select id="tuning"></select>
+  </div>
+  <div class="ctrl" title="Orientation">
+    <label>Rot</label>
+    <div id="orientation" class="seg-group">
+      <button class="seg" data-value="horizontal" title="Horizontal strings">0°</button>
+      <button class="seg" data-value="vertical" title="Vertical strings">90°</button>
+    </div>
+  </div>
+  <div class="ctrl" title="Rotate display 180°: thick string on top/left vs bottom/right and headstock side flipped">
+    <label>Rotate</label>
+    <div id="thick-side" class="seg-group">
+      <button class="seg" data-value="1" title="Default (thick on top/left, headstock on left/top)">↑/←</button>
+      <button class="seg" data-value="0" title="Rotated 180° (thick on bottom/right, headstock on right/bottom)">↓/→</button>
+    </div>
+  </div>
+  <div class="ctrl" title="Right- or left-handed guitar (mirrors string order)">
+    <label>Hand</label>
+    <div id="hand" class="seg-group">
+      <button class="seg" data-value="right" title="Right-handed guitar (default)">R</button>
+      <button class="seg" data-value="left" title="Left-handed guitar (mirrored)">L</button>
+    </div>
+  </div>
+  <div class="ctrl" title="String row spacing">
+    <label>Spacing</label>
+    <div id="spacing" class="seg-group">
+      <button class="seg" data-value="even" title="Equal-height rows">Even</button>
+      <button class="seg" data-value="pair" title="Group octave / unison courses (12-string)">Pair</button>
+      <button class="seg" data-value="cents" title="Real pitch position — for 12-string the octave string sits between courses">Cents</button>
+    </div>
+  </div>
+  <div class="ctrl-spacer"></div>
+  <button id="reset-tuning" class="btn ghost" title="Reset string edits to current preset">Reset preset</button>
+</div>
+
+<div id="neck-pickers" class="neck-pickers" style="display:none"></div>
+
+<div class="stage">
+  <div id="strings-host" class="strings">
+    <!-- per-neck canvases injected here -->
+  </div>
+
+  <aside class="side">
+    <div class="panel readout">
+      <h3>Readout</h3>
+      <div id="note" class="readout__note">—</div>
+      <div id="cents" class="readout__cents"></div>
+      <div id="target" class="readout__target">Press Start to enable mic</div>
+      <div id="mic-status" class="readout__mic"></div>
+    </div>
+
+    <div class="panel circle-wrap">
+      <h3>Circle of Fifths · Pitch Classes</h3>
+      <canvas id="circle-canvas"></canvas>
+      <div class="circle-legend">
+        <span><span class="swatch" style="background:hsla(var(--theme-hue),71%,58%,0.5)"></span>tuned</span>
+        <span><span class="swatch" style="background:hsla(var(--theme-hue),76%,73%,0.85)"></span>live</span>
+        <span>rings = necks · S# = string numbers</span>
+      </div>
+    </div>
+
+    <div class="panel guitar-wrap">
+      <h3>Guitar Diagram</h3>
+      <canvas id="guitar-canvas"></canvas>
+    </div>
+
+    <div class="panel">
+      <h3>Strings (click to edit)</h3>
+      <div id="string-editor" class="string-editor"></div>
+    </div>
+  </aside>
+</div>
+
+<footer>
+  <span>Pluck a string — trail glows brighter inside ±5¢. Hold a stable note for the readout.</span>
+  <span>Standard 6 · 7 · 8 · 12 · double-headed 6+6 · 12+6 · custom</span>
+  <span class="copy">© 2026 Manhattan Academy of Music and Language. All Rights Reserved. · Created by Phan Gia Anh Thư</span>
+</footer>
+
+<script>
+  // Per-brand default. Other repos that share this codebase only need
+  // to swap this block:
+  //   · Ukulele Tuner repo → category 'ukulele', title 'Ukulele Tuner'
+  //   · Banjo Tuner repo (when added) → category 'banjo', title 'Banjo Tuner'
+  // Everything else (UI, engine, catalog with full instrument
+  // selection) stays identical across brands so a Guitar Tuner user
+  // can still switch to ukulele from the dropdown if they want.
+    window.APP_DEFAULTS = {
+    category: 'viola',
+    tuningId: 'standard',
+    title: 'Viola Tuner',
+    subtitle: 'YIN · neon-trail · circle of fifths · 4 / 5-string viola plus violin, cello, bass & more',
+    themeHue: 261,
+  };
+</script>
+<script src="shared/yin.js"></script>
+<script src="shared/tunings.js"></script>
+<script src="shared/app.js"></script>
+</body>
+</html>
